@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wtf-windows"
+dynamic = ["version"]
+description = "Why is my Windows PC doing that? Many diagnostics, one command."
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+requires-python = ">=3.10"
+authors = [
+    {name = "djdarcy", email = "6962246+djdarcy@users.noreply.github.com"},
+]
+keywords = ["windows", "diagnostics", "restart", "crash", "bsod", "lock", "event-log", "sysadmin", "wtf"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/djdarcy/wtf-windows"
+Repository = "https://github.com/djdarcy/wtf-windows"
+Issues = "https://github.com/djdarcy/wtf-windows/issues"
+
+[project.scripts]
+wtf = "wtf_windows.cli:main"
+wtf-windows = "wtf_windows.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "wtf_windows._version.PIP_VERSION"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["wtf_windows*"]
+
+[tool.setuptools.package-data]
+"wtf_windows" = ["templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"

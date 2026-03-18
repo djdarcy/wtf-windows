@@ -1,0 +1,3 @@
+[submodule "tools/core/restarted"]
+	path = tools/core/restarted
+	url = https://github.com/djdarcy/wtf-restarted.git

@@ -1,0 +1,11 @@
+{
+    "name": "core",
+    "version": "0.1.0",
+    "description": "Core Windows diagnostic tools - restart, lock, and crash analysis",
+    "author": "djdarcy",
+    "always_active": true,
+    "tools": [
+        "core:restarted"
+    ],
+    "notes": "Core tools ship with wtf-windows and are always active. These are the primary diagnostic tools that form the foundation of the wtf-windows toolkit."
+}

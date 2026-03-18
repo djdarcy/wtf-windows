@@ -1,0 +1,15 @@
+# Default owner for everything
+* @djdarcy
+
+# Python source
+*.py @djdarcy
+
+# Documentation
+/docs/ @djdarcy
+*.md @djdarcy
+
+# GitHub config
+/.github/ @djdarcy
+
+# Manifests and kits
+*.json @djdarcy

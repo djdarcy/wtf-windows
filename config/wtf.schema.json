@@ -1,0 +1,210 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "wtf-windows Tool Manifest",
+    "description": "Schema for .wtf.json tool manifest files. Extends DazzleCMD's .dazzlecmd.json with a diagnostics section for Windows event log analysis tools.",
+    "type": "object",
+    "required": ["name", "version", "description"],
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "Tool name (used as CLI command: wtf <name>)",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "version": {
+            "type": "string",
+            "description": "Semantic version string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?$"
+        },
+        "description": {
+            "type": "string",
+            "description": "Short description of the tool"
+        },
+        "namespace": {
+            "type": "string",
+            "description": "Namespace for organization (e.g., core, deep)"
+        },
+        "language": {
+            "type": "string",
+            "description": "Primary programming language",
+            "enum": ["python", "powershell", "shell", "batch"]
+        },
+        "platform": {
+            "type": "string",
+            "description": "Target platform category",
+            "enum": ["windows", "cross-platform"],
+            "default": "windows"
+        },
+        "platforms": {
+            "type": "array",
+            "description": "Specific verified platforms",
+            "items": {
+                "type": "string",
+                "enum": ["windows", "linux", "macos"]
+            }
+        },
+        "runtime": {
+            "type": "object",
+            "description": "How to execute this tool",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "Runtime type",
+                    "enum": ["python", "binary", "script", "shell"]
+                },
+                "entry_point": {
+                    "type": "string",
+                    "description": "Function name to call (for python type)"
+                },
+                "script_path": {
+                    "type": "string",
+                    "description": "Relative path to the main script"
+                },
+                "module": {
+                    "type": "string",
+                    "description": "Python module for -m invocation (for pass_through graduated tools)"
+                },
+                "pass_through": {
+                    "type": "boolean",
+                    "description": "If true, run via subprocess instead of importing",
+                    "default": false
+                },
+                "shell": {
+                    "type": "string",
+                    "description": "Shell to use (for shell type)",
+                    "enum": ["bash", "cmd", "pwsh", "powershell"]
+                }
+            },
+            "required": ["type"]
+        },
+        "pass_through": {
+            "type": "boolean",
+            "description": "Top-level pass_through flag (also accepted in runtime)",
+            "default": false
+        },
+        "taxonomy": {
+            "type": "object",
+            "description": "Classification metadata",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Primary category (e.g., windows-diagnostics)"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags for search and filtering"
+                }
+            }
+        },
+        "diagnostics": {
+            "type": "object",
+            "description": "Windows diagnostic tool metadata (wtf-windows specific)",
+            "properties": {
+                "event_logs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Windows Event Log channels this tool reads (e.g., System, Security, Application)"
+                },
+                "event_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Specific Event IDs queried by this tool"
+                },
+                "required_privileges": {
+                    "type": "string",
+                    "description": "Privilege level needed",
+                    "enum": ["user", "admin", "mixed"],
+                    "default": "user"
+                },
+                "audit_policies": {
+                    "type": "array",
+                    "description": "Windows audit policies that should be enabled for this tool",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "subcategory": {
+                                "type": "string",
+                                "description": "Audit policy subcategory name"
+                            },
+                            "setting": {
+                                "type": "string",
+                                "description": "Required setting (success, failure, both)",
+                                "enum": ["success", "failure", "both"]
+                            },
+                            "required": {
+                                "type": "boolean",
+                                "description": "Whether the tool fails without this policy",
+                                "default": false
+                            },
+                            "guidance": {
+                                "type": "string",
+                                "description": "User-facing instruction to enable this policy"
+                            }
+                        }
+                    }
+                },
+                "ps1_scripts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "PowerShell data collection scripts (relative to tool dir)"
+                },
+                "supports_history": {
+                    "type": "boolean",
+                    "description": "Whether the tool has a history/timeline subcommand",
+                    "default": false
+                },
+                "supports_ai": {
+                    "type": "boolean",
+                    "description": "Whether the tool integrates with the AI analysis pipeline",
+                    "default": false
+                }
+            }
+        },
+        "source": {
+            "type": "object",
+            "description": "Where this tool was imported from",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Remote URL (GitHub, git, etc.)"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Local filesystem path to original source"
+                }
+            }
+        },
+        "lifecycle": {
+            "type": "object",
+            "description": "Tool lifecycle metadata",
+            "properties": {
+                "stage": {
+                    "type": "string",
+                    "enum": ["embedded", "active", "stable", "graduated", "deprecated"],
+                    "description": "Current lifecycle stage"
+                },
+                "graduated_to": {
+                    "type": "string",
+                    "description": "GitHub repo URL if tool graduated to standalone"
+                }
+            }
+        },
+        "dependencies": {
+            "type": "object",
+            "description": "Tool dependencies",
+            "properties": {
+                "python": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Python package dependencies"
+                },
+                "system": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "System-level dependencies (e.g., kd.exe)"
+                }
+            }
+        }
+    },
+    "additionalProperties": true
+}
