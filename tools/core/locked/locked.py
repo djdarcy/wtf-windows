@@ -3,31 +3,31 @@
 Diagnoses lock causes by analyzing Windows Security log events,
 registry settings, and session activity. Identifies who logged in
 and from where when a remote session displaced the console.
+
+Architecture (mirrors wtf-restarted):
+  PS1 engine (investigate_locks.ps1) does event collection + JSON output
+  Python wraps: CLI parsing, Rich rendering, AI orchestration, THAC0 gating
 """
 
 import argparse
+import json
 import sys
-from datetime import datetime
 
 from wtf_windows.lib.ps1.runner import is_admin
 
 
 def _init_thac0(verbosity, channels=None):
-    """Initialize the THAC0 output system with wtf-locked channels.
-
-    Args:
-        verbosity: Computed verbosity level (verbose - quiet).
-        channels: List of --show channel specs (e.g., ['session:2', 'trace:1']).
-    """
+    """Initialize the THAC0 output system with wtf-locked channels."""
     from wtf_windows.lib.log_lib import init_output
-    from wtf_windows.lib.log_lib.channels import KNOWN_CHANNELS, CHANNEL_DESCRIPTIONS, OPT_IN_CHANNELS
+    from wtf_windows.lib.log_lib.channels import (
+        KNOWN_CHANNELS, CHANNEL_DESCRIPTIONS, OPT_IN_CHANNELS,
+    )
     from .channels import (
         CHANNELS as APP_CHANNELS,
         CHANNEL_DESCRIPTIONS as APP_DESCRIPTIONS,
         OPT_IN_CHANNELS as APP_OPT_IN,
     )
 
-    # Merge app channels into the library's known set
     KNOWN_CHANNELS.clear()
     KNOWN_CHANNELS.update(APP_CHANNELS)
     CHANNEL_DESCRIPTIONS.clear()
@@ -39,14 +39,33 @@ def _init_thac0(verbosity, channels=None):
         verbosity=verbosity,
         channels=channels,
         known_channels=APP_CHANNELS,
+        strict_channels=True,
     )
 
 
-def main(argv=None):
-    """Entry point for wtf locked."""
-    if argv is None:
-        argv = sys.argv[1:]
+def parse_tier_spec(tier_str):
+    """Parse --tier flag value into a sorted list of tier numbers."""
+    if tier_str.lower() == "all":
+        return [0, 1, 2]
+    tiers = set()
+    for part in tier_str.split(","):
+        part = part.strip()
+        try:
+            t = int(part)
+        except ValueError:
+            raise ValueError(
+                f"invalid tier '{part}': must be 0, 1, 2, or 'all'"
+            )
+        if t not in (0, 1, 2):
+            raise ValueError(
+                f"invalid tier {t}: must be 0, 1, or 2"
+            )
+        tiers.add(t)
+    return sorted(tiers)
 
+
+def build_parser():
+    """Build the argument parser for wtf-locked."""
     parser = argparse.ArgumentParser(
         prog="wtf-locked",
         description=(
@@ -66,8 +85,16 @@ def main(argv=None):
         help="Hours to look back in event log (default: 720 = 30 days)",
     )
     parser.add_argument(
-        "--json", action="store_true",
+        "--json", dest="json_output", action="store_true",
         help="Output raw JSON data",
+    )
+    parser.add_argument(
+        "--tier", "-t", metavar="TIERS",
+        help="Which tiers to show: 0, 1, 2, comma-separated, or 'all'",
+    )
+    parser.add_argument(
+        "--no-page", "-np", action="store_true",
+        help="Disable interactive paging between tiers",
     )
     parser.add_argument(
         "--verbose", "-v", action="count", default=0,
@@ -82,252 +109,253 @@ def main(argv=None):
         help="Set per-channel verbosity (repeatable)",
     )
     parser.add_argument(
+        "--ai", nargs="?", const="claude", default=None, metavar="BACKEND",
+        help="Run AI analysis (default backend: claude)",
+    )
+    parser.add_argument(
+        "--ai-only", nargs="?", const="claude", default=None, metavar="BACKEND",
+        help="Show only the AI analysis (skip normal output)",
+    )
+    parser.add_argument(
+        "--ai-verbose", action="store_true",
+        help="Stream AI output in real-time",
+    )
+    parser.add_argument(
+        "--ai-refresh", action="store_true",
+        help="Bypass AI cache and re-run analysis",
+    )
+    parser.add_argument(
         "--version", action="version",
         version="wtf-locked 0.1.0-alpha",
     )
+    return parser
 
+
+def _hours_explicit(argv):
+    """Check if --hours was explicitly passed on the command line."""
+    return any(a in ("--hours",) or a.startswith("--hours=") for a in argv)
+
+
+def main(argv=None):
+    """Entry point for wtf locked."""
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Compute verbosity
     args.verbose = args.verbose - args.quiet
 
-    # Initialize THAC0 output system
+    # Initialize THAC0
     _init_thac0(args.verbose, channels=args.show)
+
+    # Parse --tier
+    if args.tier is not None:
+        try:
+            args.tiers = parse_tier_spec(args.tier)
+        except ValueError as e:
+            parser.error(str(e))
+    else:
+        args.tiers = None
 
     # Admin check -- Security log requires elevation
     if sys.platform == "win32" and not is_admin():
-        from wtf_windows.lib.log_lib import get_output
-        out = get_output()
-        out.emit(-2, "wtf-locked requires administrator privileges.", channel="error")
-        out.emit(-2, "", channel="error")
-        out.emit(-2, "The Security event log (where lock/unlock events live) requires", channel="error")
-        out.emit(-2, "elevated access. Please run from an administrator terminal:", channel="error")
-        out.emit(-2, "", channel="error")
-        out.emit(-2, "  Right-click terminal -> Run as administrator", channel="error")
-        out.emit(-2, "  Then: wtf locked", channel="error")
+        print("Error: wtf-locked requires administrator privileges.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("The Security event log requires elevated access.", file=sys.stderr)
+        print("Run from an administrator terminal:", file=sys.stderr)
+        print("  Right-click terminal -> Run as administrator", file=sys.stderr)
+        print("  Then: wtf locked", file=sys.stderr)
         return 1
+
+    # Detect if --hours was explicitly passed (strict time-slice vs lock-anchored)
+    hours_explicit = _hours_explicit(argv)
 
     if args.command == "history":
-        return _cmd_history(args)
+        return _cmd_history(args, hours_explicit)
     else:
-        return _cmd_diagnose(args)
+        return _cmd_diagnose(args, hours_explicit)
 
 
-def _cmd_diagnose(args):
-    """Diagnose the most recent lock event."""
-    from wtf_windows.lib.log_lib import get_output
+def _cmd_diagnose(args, hours_explicit=False):
+    """Run full lock diagnosis."""
     from .engine.investigator import run_investigation
+    from . import render
 
-    out = get_output()
+    # --ai-only implies --ai
+    if args.ai_only is not None:
+        if not args.ai:
+            args.ai = args.ai_only
 
-    result = run_investigation(hours=args.hours, verbose=args.verbose > 0)
-
-    if args.json:
-        import json
-        output = result["raw"]
-        output["sessions"] = [_session_to_dict(s) for s in result["sessions"]]
-        print(json.dumps(output, indent=2, default=str))
-        return 0
+    # Run investigation (with spinner for interactive terminals)
+    interactive = sys.stdout.isatty() and not args.json_output
+    if interactive:
+        from rich.console import Console
+        console = Console(stderr=True)
+        with console.status("[bold blue]Reading event logs...[/bold blue]"):
+            result = run_investigation(
+                hours=args.hours,
+                strict_lookback=hours_explicit,
+                verbose=args.verbose > 0,
+            )
+    else:
+        result = run_investigation(
+            hours=args.hours,
+            strict_lookback=hours_explicit,
+            verbose=args.verbose > 0,
+        )
 
     if result.get("error"):
-        out.emit(-2, f"Error: {result['error']}", channel="error")
+        print(f"Error: {result['error']}", file=sys.stderr)
         return 1
 
-    sessions = result["sessions"]
+    # Build AI fetcher callback (lazy -- called after verdict is visible)
+    ai_fetcher = None
+    if args.ai:
+        ai_fetcher = lambda: _get_ai_sections(args, result)
 
-    # Note audit policy status (but don't stop -- Winlogon events are always available)
-    if not result["audit_enabled"]:
-        _show_audit_notice(out, has_events=len(sessions) > 0)
+    # Standard output (unless --ai-only)
+    if not args.ai_only:
+        if args.json_output:
+            ai_result = ai_fetcher() if ai_fetcher else None
+            output = result["raw"]
+            output["sessions"] = [_session_to_dict(s) for s in result["sessions"]]
+            if ai_result:
+                output["ai_analysis"] = ai_result
+            print(json.dumps(output, indent=2, default=str))
+            return 0
+        else:
+            render.render_diagnosis(
+                result,
+                verbose=args.verbose,
+                tiers=args.tiers,
+                no_page=args.no_page,
+                interactive=interactive,
+                ai_fetcher=ai_fetcher,
+            )
+            return 0
 
-    if not sessions:
-        out.emit(-2, f"No lock events found in the last {args.hours} hours.", channel="verdict")
-        _show_policy_summary(result["raw"], out)
-        return 0
-
-    # Show the most recent lock
-    latest = sessions[0]
-    _render_verdict(latest, out)
-
-    # Show count of other locks
-    if len(sessions) > 1:
-        out.emit(0, f"\n  ({len(sessions) - 1} other lock event(s) in the last {args.hours} hours"
-                 " -- use 'wtf locked history' to see all)", channel="hint")
+    # --ai-only mode
+    if args.ai_only and ai_fetcher:
+        ai_result = ai_fetcher()
+        if not ai_result:
+            return 1
+        if args.json_output:
+            output = result["raw"]
+            output["ai_analysis"] = ai_result
+            print(json.dumps(output, indent=2, default=str))
+        elif ai_result.get("success"):
+            render.render_ai_analysis(ai_result["sections"])
+        else:
+            error = ai_result.get("error", "Unknown error")
+            print(f"\nAI analysis failed: {error}", file=sys.stderr)
 
     return 0
 
 
-def _cmd_history(args):
+def _cmd_history(args, hours_explicit=False):
     """Show lock/unlock timeline."""
-    from wtf_windows.lib.log_lib import get_output
     from .engine.investigator import run_investigation
+    from . import render
 
-    out = get_output()
-
-    result = run_investigation(hours=args.hours, verbose=args.verbose > 0)
-
-    if args.json:
-        import json
-        output = result["raw"]
-        output["sessions"] = [_session_to_dict(s) for s in result["sessions"]]
-        print(json.dumps(output, indent=2, default=str))
-        return 0
+    # Run investigation (with spinner)
+    interactive = sys.stdout.isatty() and not args.json_output
+    if interactive:
+        from rich.console import Console
+        console = Console(stderr=True)
+        with console.status("[bold blue]Reading event logs...[/bold blue]"):
+            result = run_investigation(
+                hours=args.hours,
+                strict_lookback=hours_explicit,
+                verbose=args.verbose > 0,
+            )
+    else:
+        result = run_investigation(
+            hours=args.hours,
+            strict_lookback=hours_explicit,
+            verbose=args.verbose > 0,
+        )
 
     if result.get("error"):
-        out.emit(-2, f"Error: {result['error']}", channel="error")
+        print(f"Error: {result['error']}", file=sys.stderr)
         return 1
 
     sessions = result["sessions"]
 
-    if not result["audit_enabled"]:
-        _show_audit_notice(out, has_events=len(sessions) > 0)
-
-    if not sessions:
-        out.emit(-2, f"No lock events found in the last {args.hours} hours.", channel="history")
-        _show_policy_summary(result["raw"], out)
+    if args.json_output:
+        output = result["raw"]
+        output["sessions"] = [_session_to_dict(s) for s in sessions]
+        print(json.dumps(output, indent=2, default=str))
         return 0
 
-    out.emit(-2, f"\n  Lock History -- Last {args.hours} hours ({len(sessions)} events)", channel="history")
-    out.emit(-2, "  " + "-" * 70, channel="history")
-
-    for session in sessions:
-        _render_history_row(session, out, args.verbose)
-
+    render.render_history(sessions, hours=args.hours)
     return 0
 
 
-def _render_verdict(session, out):
-    """Render a lock verdict to the console via THAC0 channels."""
-    from .engine.verdict import VERDICT_THREAT_LEVEL
+def _get_ai_sections(args, result):
+    """Run AI analysis and return the result dict (does not render)."""
+    from pathlib import Path
+    from wtf_windows.lib.ai.analyzer import analyze, check_available
 
-    threat = VERDICT_THREAT_LEVEL.get(session.lock_cause, 10)
+    backend = args.ai
 
-    # Severity indicator
-    if threat <= 2:
-        severity = "[!!]"
-        label = "SUSPICIOUS"
-    elif threat <= 4:
-        severity = "[!]"
-        label = "NOTABLE"
-    else:
-        severity = "[.]"
-        label = "NORMAL"
+    if not check_available(backend):
+        if backend == "claude":
+            print(
+                "\nAI analysis unavailable: Claude Code CLI not found.\n"
+                "Install from https://claude.ai/claude-code\n"
+                "Or use --ai prompt-only to save the prompt for manual use.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"\nAI analysis unavailable: backend '{backend}' not found.",
+                file=sys.stderr,
+            )
+        if args.ai_only:
+            sys.exit(1)
+        return None
 
-    out.emit(-2, f"\n  {severity} {session.lock_cause}  ({label}, confidence: {session.confidence})",
-             channel="verdict")
-    out.emit(-2, f"  Locked at: {_fmt_time(session.locked_at)}", channel="session")
+    # Lock-specific fingerprint for AI cache key
+    def _fingerprint(results):
+        fp = {}
+        lock_events = results.get("lock_events", [])
+        fp["lock_count"] = len(lock_events)
+        fp["lock_times"] = sorted(e.get("time", "") for e in lock_events)
+        fp["audit_enabled"] = results.get("audit_policy_enabled", False)
+        login_events = results.get("login_events", [])
+        fp["login_count"] = len(login_events)
+        fp["login_times"] = sorted(e.get("time", "") for e in login_events)
+        return fp
 
-    if session.unlocked_at:
-        out.emit(-2, f"  Unlocked:  {_fmt_time(session.unlocked_at)}"
-                 f"  (duration: {session.duration_minutes:.0f} min)", channel="session")
-    else:
-        out.emit(-2, "  Unlocked:  (still locked or no unlock event)", channel="session")
+    # Prompt template path
+    prompt_dir = Path(__file__).parent / "prompts"
+    prompt_path = prompt_dir / "diagnose.md"
+    if not prompt_path.exists():
+        print("Warning: AI prompt template not found, using raw evidence.",
+              file=sys.stderr)
+        return None
 
-    # Evidence
-    if session.evidence:
-        out.emit(0, "", channel="evidence")
-        for line in session.evidence:
-            out.emit(0, f"    - {line}", channel="evidence")
+    cache_dir = Path.home() / ".wtf-locked" / "cache"
 
-    # Concurrent login details (the key "who did this?" info)
-    login = session.concurrent_login
-    if login:
-        out.emit(-1, "", channel="login")
-        out.emit(-1, "  Concurrent login detected:", channel="login")
-        out.emit(-1, f"    User:    {login.domain}\\{login.user}", channel="login")
-        out.emit(-1, f"    Type:    {login.logon_type_name}", channel="login")
-        if login.source_ip and login.source_ip != "-":
-            source_line = f"    Source:  {login.source_ip}"
-            if login.source_hostname and login.source_hostname != "-":
-                source_line += f" ({login.source_hostname})"
-            out.emit(-1, source_line, channel="login")
-        out.emit(-1, f"    Time:    {_fmt_time(login.timestamp)}", channel="login")
+    if not args.ai_verbose and not args.json_output:
+        if args.ai_refresh:
+            print("  Refreshing AI analysis...", file=sys.stderr)
+        else:
+            print("  Running AI analysis...", file=sys.stderr)
 
-    # Guidance for suspicious locks
-    if threat <= 2:
-        out.emit(-2, "", channel="hint")
-        out.emit(-2, "  >> This lock may indicate unauthorized access.", channel="hint")
-        out.emit(-2, "  >> Check: Was this login expected? Do you recognize the source IP?", channel="hint")
-        out.emit(-2, "  >> If not, investigate immediately and consider changing passwords.", channel="hint")
-
-
-def _render_history_row(session, out, verbose=0):
-    """Render one row in the history timeline."""
-    from .engine.verdict import VERDICT_THREAT_LEVEL
-
-    threat = VERDICT_THREAT_LEVEL.get(session.lock_cause, 10)
-    if threat <= 2:
-        marker = "!!"
-    elif threat <= 4:
-        marker = "! "
-    else:
-        marker = "  "
-
-    duration_str = f"{session.duration_minutes:.0f}min" if session.duration_minutes else "ongoing"
-
-    line = (f"  {marker} {_fmt_time(session.locked_at)}  "
-            f"{session.lock_cause:<22}  {duration_str:<10}")
-
-    # Add concurrent login info if present
-    if session.concurrent_login:
-        login = session.concurrent_login
-        source = login.source_ip or ""
-        line += f"  {login.domain}\\{login.user}"
-        if source and source != "-":
-            line += f" from {source}"
-
-    out.emit(-2, line, channel="history")
-
-    # Show evidence in verbose mode
-    if verbose > 0 and session.evidence:
-        for ev in session.evidence:
-            out.emit(1, f"       {ev}", channel="evidence")
-
-
-def _show_audit_notice(out, has_events=False):
-    """Show a note about audit policy status (but don't stop processing).
-
-    The tool always continues -- Winlogon events are available without
-    the audit policy. This notice just informs the user that richer
-    data is available if they enable it.
-    """
-    out.emit(0, "", channel="policy")
-    if has_events:
-        out.emit(0, "  Note: Using Winlogon events (audit policy not enabled).", channel="policy")
-        out.emit(0, "  Enable audit policy for richer data (user SID, session ID):", channel="hint")
-    else:
-        out.emit(-2, "  Note: Audit policy 'Other Logon/Logoff Events' is not enabled.", channel="policy")
-        out.emit(-2, "  Enable for detailed lock/unlock tracking:", channel="hint")
-    out.emit(0, '    auditpol /set /subcategory:"Other Logon/Logoff Events" /success:enable', channel="hint")
-    out.emit(0, "", channel="policy")
-
-
-def _show_policy_summary(data, out):
-    """Show registry/GPO settings as context when no lock events are found."""
-    out.emit(0, "", channel="policy")
-    out.emit(0, "  Lock-related settings:", channel="policy")
-
-    ss = data.get("screensaver_config", {})
-    ss_active = ss.get("ScreenSaveActive", "0")
-    if ss_active == "1":
-        timeout = ss.get("ScreenSaveTimeOut") or "not set"
-        secure = "yes" if ss.get("ScreenSaverIsSecure") == "1" else "no"
-        out.emit(0, f"    Screen saver:       Active (timeout: {timeout}s, lock on resume: {secure})",
-                 channel="policy")
-    else:
-        out.emit(0, "    Screen saver:       Inactive", channel="policy")
-
-    if data.get("dynamic_lock_enabled"):
-        out.emit(0, "    Dynamic Lock:       Enabled (Bluetooth)", channel="policy")
-
-    inactivity = data.get("inactivity_timeout_secs", 0)
-    if inactivity > 0:
-        out.emit(0, f"    Inactivity timeout: {inactivity}s ({inactivity // 60} min)", channel="policy")
-    else:
-        out.emit(0, "    Inactivity timeout: Not set", channel="policy")
-
-    gpo = data.get("gpo_inactivity_limit", 0)
-    if gpo > 0:
-        out.emit(0, f"    GPO inactivity:     {gpo}s ({gpo // 60} min)", channel="policy")
-    else:
-        out.emit(0, "    GPO inactivity:     Not set", channel="policy")
+    return analyze(
+        results=result["raw"],
+        fingerprint_fn=_fingerprint,
+        prompt_path=prompt_path,
+        cache_dir=cache_dir,
+        tool_name="locked",
+        backend_name=backend,
+        verbose=args.ai_verbose,
+        timeout=120,
+        refresh=args.ai_refresh,
+    )
 
 
 def _session_to_dict(session):
@@ -352,13 +380,6 @@ def _session_to_dict(session):
             "timestamp": str(login.timestamp),
         }
     return d
-
-
-def _fmt_time(dt):
-    """Format a datetime for display."""
-    if not dt or dt == datetime.min:
-        return "unknown"
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,10 @@
 
 Calls investigate_locks.ps1 via the shared PowerShell runner,
 then builds LockSession objects with verdicts.
+
+Lock-anchored lookback (parallel to wtf-restarted's boot-anchored lookback):
+  Default: auto-extends past the --hours window to cover the most recent lock
+  Explicit --hours: strict time-slice (user asked for exactly this window)
 """
 
 from pathlib import Path
@@ -13,11 +17,13 @@ from .verdict import build_sessions
 _PS1_DIR = Path(__file__).parent.parent / "ps1"
 
 
-def run_investigation(hours=720, verbose=False):
+def run_investigation(hours=720, strict_lookback=False, verbose=False):
     """Run the lock investigation.
 
     Args:
         hours: How far back to look in the event log (default: 30 days)
+        strict_lookback: If True, use exact time window (user passed --hours).
+            If False, auto-extend to cover the most recent lock event.
         verbose: Print debug info
 
     Returns:
@@ -25,13 +31,18 @@ def run_investigation(hours=720, verbose=False):
             raw: Full data dict from PowerShell
             sessions: List of LockSession objects
             audit_enabled: Whether the audit policy is active
+            error: Error string or None
     """
+    params = {"Hours": hours}
+    if strict_lookback:
+        params["StrictLookback"] = True
+
     data = run_ps1(
         "investigate_locks.ps1",
         _PS1_DIR,
         timeout=60,
         verbose=verbose,
-        Hours=hours,
+        **params,
     )
 
     if "error" in data:

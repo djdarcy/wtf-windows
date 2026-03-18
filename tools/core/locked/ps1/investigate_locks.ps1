@@ -15,11 +15,52 @@
 # Output: JSON to stdout (consumed by Python via run_ps1)
 
 param(
-    [int]$Hours = 720
+    [int]$Hours = 720,
+    [switch]$StrictLookback
 )
 
 $ErrorActionPreference = "SilentlyContinue"
-$After = (Get-Date).AddHours(-$Hours)
+$now = Get-Date
+$After = $now.AddHours(-$Hours)
+
+# Lock-anchored lookback: if not strict, find the most recent lock event
+# and extend the window to cover it (like wtf-restarted's boot-anchored lookback).
+$LookbackExtended = $false
+$ActualHours = $Hours
+
+if (-not $StrictLookback) {
+    # Quick scan: find the most recent Winlogon lock event (any age)
+    $RecentLock = $null
+    try {
+        $AllWinlogon = Get-WinEvent -FilterHashtable @{
+            LogName = 'Microsoft-Windows-Winlogon/Operational'
+        } -MaxEvents 500 -ErrorAction SilentlyContinue
+
+        foreach ($evt in $AllWinlogon) {
+            if ($evt.Message -match 'notification event \(7\)') {
+                $RecentLock = $evt
+                break
+            }
+        }
+    } catch { }
+
+    # Also check Security 4800 if available
+    if (-not $RecentLock) {
+        try {
+            $RecentLock = Get-WinEvent -FilterHashtable @{
+                LogName = 'Security'
+                Id = 4800
+            } -MaxEvents 1 -ErrorAction SilentlyContinue
+        } catch { }
+    }
+
+    # If the most recent lock is older than our window, extend
+    if ($RecentLock -and $RecentLock.TimeCreated -lt $After) {
+        $After = $RecentLock.TimeCreated.AddMinutes(-5)
+        $LookbackExtended = $true
+        $ActualHours = [Math]::Round(($now - $After).TotalHours, 1)
+    }
+}
 
 # --- Audit policy check ---
 $AuditEnabled = $false
@@ -322,8 +363,12 @@ $Output = @{
     inactivity_timeout_secs = $InactivityTimeout
     gpo_inactivity_limit = $GPOLimit
     sid_to_user = $SidToUser
-    query_hours = $Hours
+    lookback_hours = $Hours
+    lookback_extended = $LookbackExtended
+    lookback_actual_hours = $ActualHours
+    strict_lookback = [bool]$StrictLookback
     query_time = (Get-Date).ToString("o")
+    computer_name = $env:COMPUTERNAME
 }
 
 $Output | ConvertTo-Json -Depth 4
