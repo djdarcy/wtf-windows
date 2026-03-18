@@ -29,15 +29,17 @@ $LookbackExtended = $false
 $ActualHours = $Hours
 
 if (-not $StrictLookback) {
-    # Quick scan: find the most recent Winlogon lock event (any age)
+    # Quick scan: find the most recent lock-equivalent event (any age)
+    # Type 7 = SESSION_LOCK, Type 4 = REMOTE_DISCONNECT (also causes console lock)
     $RecentLock = $null
     try {
         $AllWinlogon = Get-WinEvent -FilterHashtable @{
             LogName = 'Microsoft-Windows-Winlogon/Operational'
+            Id = 811
         } -MaxEvents 500 -ErrorAction SilentlyContinue
 
         foreach ($evt in $AllWinlogon) {
-            if ($evt.Message -match 'notification event \(7\)') {
+            if ($evt.Message -match 'notification event \((4|7)\)') {
                 $RecentLock = $evt
                 break
             }
@@ -77,44 +79,70 @@ try {
 # =====================================================================
 $WinlogonLocks = @()
 $WinlogonUnlocks = @()
+$WinlogonDisconnects = @()
 try {
     $WinlogonEvents = Get-WinEvent -FilterHashtable @{
         LogName = 'Microsoft-Windows-Winlogon/Operational'
         StartTime = $After
-    } -MaxEvents 500 -ErrorAction SilentlyContinue
+    } -MaxEvents 1000 -ErrorAction SilentlyContinue
+
+    # Deduplicate: multiple subscribers fire per event (TermSrv, Sens, SessionEnv).
+    # Track which (timestamp, type) pairs we've already recorded.
+    $SeenLocks = @{}
+    $SeenUnlocks = @{}
+    $SeenDisconnects = @{}
 
     foreach ($evt in $WinlogonEvents) {
         $notifType = $null
         if ($evt.Message -match 'notification event \((\d+)\)') {
             $notifType = [int]$Matches[1]
         }
-        $subscriber = ""
-        if ($evt.Message -match 'subscriber <(\w+)>') {
-            $subscriber = $Matches[1]
-        }
+        if ($null -eq $notifType) { continue }
 
-        if ($notifType -eq 7) {
-            # SESSION_LOCK
+        # Only process 811 (begin) events to avoid double-counting with 812 (end)
+        if ($evt.Id -ne 811) { continue }
+
+        # Deduplicate by timestamp (rounded to second)
+        $timeKey = $evt.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
+
+        if ($notifType -eq 7 -and -not $SeenLocks.ContainsKey($timeKey)) {
+            # SESSION_LOCK (explicit Win+L or system lock)
+            $SeenLocks[$timeKey] = $true
             $WinlogonLocks += @{
                 time = $evt.TimeCreated.ToString("o")
                 event_id = $evt.Id
                 source = "winlogon"
+                lock_type = "SESSION_LOCK"
                 notification_type = 7
-                subscriber = $subscriber
-                message = ($evt.Message -replace "`r`n", " " -replace "`n", " ").Substring(0, [Math]::Min(200, $evt.Message.Length))
             }
         }
-        elseif ($notifType -eq 8) {
+        elseif ($notifType -eq 4 -and -not $SeenDisconnects.ContainsKey($timeKey)) {
+            # REMOTE_DISCONNECT -- console session displaced by RDP disconnect.
+            # This effectively locks the console for the local user.
+            $SeenDisconnects[$timeKey] = $true
+            $WinlogonDisconnects += @{
+                time = $evt.TimeCreated.ToString("o")
+                event_id = $evt.Id
+                source = "winlogon"
+                lock_type = "RDP_DISCONNECT"
+                notification_type = 4
+            }
+        }
+        elseif ($notifType -eq 8 -and -not $SeenUnlocks.ContainsKey($timeKey)) {
             # SESSION_UNLOCK
+            $SeenUnlocks[$timeKey] = $true
             $WinlogonUnlocks += @{
                 time = $evt.TimeCreated.ToString("o")
                 event_id = $evt.Id
                 source = "winlogon"
+                lock_type = "SESSION_UNLOCK"
                 notification_type = 8
-                subscriber = $subscriber
             }
         }
     }
+
+    # Merge: explicit locks + RDP disconnects are both "lock-equivalent" events
+    $WinlogonLocks = @($WinlogonLocks) + @($WinlogonDisconnects) | Sort-Object { [datetime]$_.time } -Descending
 } catch { }
 
 # =====================================================================
@@ -353,6 +381,7 @@ $Output = @{
     lock_events = $LockEvents
     unlock_events = $UnlockEvents
     winlogon_lock_count = $WinlogonLocks.Count
+    winlogon_disconnect_count = $WinlogonDisconnects.Count
     security_lock_count = $SecurityLocks.Count
     screensaver_events = $ScreensaverEvents
     login_events = $LoginEvents

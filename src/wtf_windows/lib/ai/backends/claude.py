@@ -41,12 +41,24 @@ def invoke(prompt, verbose=False, timeout=120):
             "Install from https://claude.ai/claude-code"
         )
 
-    cmd = [
-        claude_path,
-        "--output-format", "text",
-        "-p",
-        prompt,
-    ]
+    # Use stdin for long prompts to avoid Windows command-line length
+    # limit (WinError 206: "The filename or extension is too long").
+    # Claude CLI accepts prompts via stdin when -p is "-".
+    use_stdin = len(prompt.encode("utf-8")) > 8000
+
+    if use_stdin:
+        cmd = [
+            claude_path,
+            "--output-format", "text",
+            "-p", "-",
+        ]
+    else:
+        cmd = [
+            claude_path,
+            "--output-format", "text",
+            "-p",
+            prompt,
+        ]
 
     # Remove env vars that conflict with subprocess invocation
     env = os.environ.copy()
@@ -55,20 +67,28 @@ def invoke(prompt, verbose=False, timeout=120):
 
     try:
         if verbose:
-            return _invoke_streaming(cmd, env, timeout)
+            return _invoke_streaming(cmd, env, timeout, stdin_text=prompt if use_stdin else None)
         else:
-            return _invoke_blocking(cmd, env, timeout)
-    except FileNotFoundError:
-        return False, f"Claude CLI not found at: {claude_path}"
+            return _invoke_blocking(cmd, env, timeout, stdin_text=prompt if use_stdin else None)
+    except FileNotFoundError as e:
+        return False, (
+            f"Claude CLI not found at: {claude_path} "
+            f"(detail: {e})"
+        )
+    except OSError as e:
+        return False, (
+            f"OS error invoking Claude CLI at {claude_path}: {e}"
+        )
     except Exception as e:
-        return False, f"Error invoking Claude CLI: {e}"
+        return False, f"Error invoking Claude CLI: {type(e).__name__}: {e}"
 
 
-def _invoke_blocking(cmd, env, timeout):
+def _invoke_blocking(cmd, env, timeout, stdin_text=None):
     """Run Claude CLI and capture output."""
     result = subprocess.run(
         cmd,
         env=env,
+        input=stdin_text,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -85,17 +105,22 @@ def _invoke_blocking(cmd, env, timeout):
         )
 
 
-def _invoke_streaming(cmd, env, timeout):
+def _invoke_streaming(cmd, env, timeout, stdin_text=None):
     """Run Claude CLI with real-time output streaming."""
     process = subprocess.Popen(
         cmd,
         env=env,
+        stdin=subprocess.PIPE if stdin_text else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
+    # Write stdin if provided (for long prompts)
+    if stdin_text:
+        process.stdin.write(stdin_text)
+        process.stdin.close()
     output_lines = []
 
     def _reader():

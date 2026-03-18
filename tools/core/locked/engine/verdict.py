@@ -109,6 +109,55 @@ def classify_lock(lock_event, data):
     """
     lock_time = _parse_time(lock_event["time"])
     lock_sid = lock_event.get("user_sid", "")
+    lock_type = lock_event.get("lock_type", "")
+
+    # --- Rule 0: RDP disconnect from Winlogon (always detected, no audit needed) ---
+    if lock_type == "RDP_DISCONNECT":
+        # Check if there's a concurrent RDP login that displaced us
+        login = _find_concurrent_login(lock_time, data, window_secs=60)
+        rdp_events = data.get("rdp_events", [])
+        rdp_detail = _find_rdp_event(lock_time, rdp_events, window_secs=30)
+
+        if login and login.logon_type == 10:
+            if login.user.upper() != _current_user(lock_sid, data):
+                return (
+                    "REMOTE_TAKEOVER",
+                    [
+                        f"RDP session disconnected (Winlogon type 4)",
+                        f"Different user connected: {login.domain}\\{login.user}",
+                        f"Source: {login.source_ip or 'unknown'}"
+                        + (f" ({login.source_hostname})" if login.source_hostname else ""),
+                    ],
+                    "high",
+                    login,
+                )
+            else:
+                source = ""
+                if rdp_detail and rdp_detail.get("source_ip"):
+                    source = f" from {rdp_detail['source_ip']}"
+                return (
+                    "RDP_SELF_RECONNECT",
+                    [
+                        f"RDP session disconnect/reconnect{source}",
+                        "Own account reconnected from another machine",
+                    ],
+                    "medium",
+                    login,
+                )
+        else:
+            # RDP disconnect without a matching login event
+            source = ""
+            if rdp_detail and rdp_detail.get("source_ip"):
+                source = f" from {rdp_detail['source_ip']}"
+            return (
+                "RDP_SELF_RECONNECT",
+                [
+                    f"RDP session disconnected{source}",
+                    "Console session was displaced by RDP activity",
+                ],
+                "medium",
+                None,
+            )
 
     # --- Rule 1: Remote takeover (unknown user via RDP) ---
     login = _find_concurrent_login(lock_time, data, window_secs=60)
@@ -317,6 +366,16 @@ def _sleep_preceded(lock_time, data, window_secs=30):
         if 0 <= delta <= window_secs:
             return True
     return False
+
+
+def _find_rdp_event(lock_time, rdp_events, window_secs=30):
+    """Find an RDP session event within window_secs of the lock time."""
+    window = timedelta(seconds=window_secs)
+    for evt in rdp_events:
+        evt_time = _parse_time(evt.get("time", ""))
+        if abs(evt_time - lock_time) <= window:
+            return evt
+    return None
 
 
 def _logon_type_name(logon_type):
