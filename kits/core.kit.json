@@ -5,7 +5,8 @@
     "author": "djdarcy",
     "always_active": true,
     "tools": [
-        "core:restarted"
+        "core:restarted",
+        "core:locked"
     ],
     "notes": "Core tools ship with wtf-windows and are always active. These are the primary diagnostic tools that form the foundation of the wtf-windows toolkit."
 }

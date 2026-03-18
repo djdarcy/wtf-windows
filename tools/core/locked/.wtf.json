@@ -1,0 +1,34 @@
+{
+    "name": "locked",
+    "version": "0.1.0",
+    "description": "Why did my Windows PC lock? Diagnoses lock causes, identifies who logged in.",
+    "namespace": "core",
+    "language": "python",
+    "platform": "windows",
+    "platforms": ["windows"],
+    "runtime": {
+        "type": "python",
+        "entry_point": "main",
+        "script_path": "locked.py"
+    },
+    "taxonomy": {
+        "category": "windows-diagnostics",
+        "tags": ["lock", "security", "session", "rdp", "event-log"]
+    },
+    "diagnostics": {
+        "event_logs": ["Security"],
+        "event_ids": [4800, 4801, 4802, 4803, 4624, 4625],
+        "required_privileges": "admin",
+        "audit_policies": [
+            {
+                "subcategory": "Other Logon/Logoff Events",
+                "setting": "success",
+                "required": false,
+                "guidance": "Enable for lock/unlock event tracking: auditpol /set /subcategory:\"Other Logon/Logoff Events\" /success:enable"
+            }
+        ],
+        "ps1_scripts": ["ps1/investigate_locks.ps1"],
+        "supports_history": true,
+        "supports_ai": false
+    }
+}

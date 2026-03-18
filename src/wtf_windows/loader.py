@@ -179,7 +179,13 @@ def resolve_entry_point(project):
 
 
 def _make_python_runner(project):
-    """Create a runner that imports and calls a Python entry point."""
+    """Create a runner that imports and calls a Python entry point.
+
+    For embedded tools that use relative imports (e.g., tools with
+    .engine, .channels submodules), falls back to subprocess invocation
+    with the tool directory's parent on PYTHONPATH so the tool's package
+    is importable.
+    """
     runtime = project.get("runtime", {})
     entry_point = runtime.get("entry_point", "main")
     script_path = runtime.get("script_path")
@@ -190,6 +196,12 @@ def _make_python_runner(project):
             full_path = os.path.join(tool_dir, script_path)
             module_dir = os.path.dirname(full_path)
             module_name = os.path.splitext(os.path.basename(full_path))[0]
+
+            # Check if the tool uses relative imports (has __init__.py)
+            # If so, run as subprocess with parent on PYTHONPATH
+            init_file = os.path.join(tool_dir, "__init__.py")
+            if os.path.isfile(init_file):
+                return _run_as_package(tool_dir, script_path, entry_point, argv)
 
             if module_dir not in sys.path:
                 sys.path.insert(0, module_dir)
@@ -218,6 +230,38 @@ def _make_python_runner(project):
         return 1
 
     return runner
+
+
+def _run_as_package(tool_dir, script_path, entry_point, argv):
+    """Run an embedded tool as a package via subprocess.
+
+    Adds the tool's parent directory to PYTHONPATH so the tool's package
+    is importable with its relative imports. Constructs a -c command that
+    imports the tool's module and calls its entry point.
+    """
+    tool_name = os.path.basename(tool_dir)
+    parent_dir = os.path.dirname(tool_dir)
+    module_base = os.path.splitext(script_path)[0].replace(os.sep, ".").replace("/", ".")
+
+    # Build: python -c "import sys; sys.argv = [...]; from <tool>.<module> import <entry>; sys.exit(<entry>(sys.argv[1:]))"
+    argv_repr = repr([tool_name] + list(argv))
+    code = (
+        f"import sys; sys.argv = {argv_repr}; "
+        f"from {tool_name}.{module_base} import {entry_point}; "
+        f"sys.exit({entry_point}(sys.argv[1:]) or 0)"
+    )
+
+    env = os.environ.copy()
+    # Prepend parent dir to PYTHONPATH so the tool package is importable
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = parent_dir + (os.pathsep + existing if existing else "")
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        cwd=os.getcwd(),
+    )
+    return result.returncode
 
 
 def _make_subprocess_runner(project):
