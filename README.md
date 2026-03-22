@@ -53,15 +53,15 @@ wtf --version
 
 ### Core Kit
 
-| Tool | Command | Description |
-|------|---------|-------------|
-| [wtf-restarted](https://github.com/djdarcy/wtf-restarted) | `wtf restarted` | Why did my Windows PC restart? Event log analysis, AI diagnosis. |
+| Tool | Command | Description | Privileges |
+|------|---------|-------------|------------|
+| [wtf-restarted](docs/tools/core/restarted.md) | `wtf restarted` | Why did my Windows PC restart? | User |
+| [wtf-locked](docs/tools/core/locked.md) | `wtf locked` | Why did my Windows PC lock? | Admin |
 
 ### Planned
 
 | Tool | Command | Description |
 |------|---------|-------------|
-| wtf-locked | `wtf locked` | Why did my PC lock? Security log analysis. |
 | wtf-crashed | `wtf crashed` | Deep BSOD / bugcheck analysis. |
 | wtf-updated | `wtf updated` | Why did Windows Update run? |
 
@@ -139,6 +139,12 @@ This mirrors the [DazzleCMD](https://github.com/DazzleTools/dazzlecmd) pattern a
 
 ## Documentation
 
+### Tool Docs
+- [Core Kit Overview](docs/tools/core/README.md) -- all core tools
+- [wtf restarted](docs/tools/core/restarted.md) -- restart diagnosis: verdicts, events, AI, flags
+- [wtf locked](docs/tools/core/locked.md) -- lock diagnosis: verdicts, RDP detection, concurrent logins, flags
+
+### Architecture & Development
 - [Manifest Reference](docs/manifest-reference.md) -- full `.wtf.json` field documentation
 - [Mode System](docs/mode-system.md) -- dev/publish toggle, five states, graduation workflow
 - [Writing a Diagnostic Tool](docs/writing-a-diagnostic-tool.md) -- tutorial for creating new tools

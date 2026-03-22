@@ -247,6 +247,36 @@ def classify_lock(lock_event, data):
             None,
         )
 
+    # --- Rule 8: RDP session events show console displacement ---
+    # TerminalServices events (always available) are the definitive source
+    # for RDP activity. This catches cases where lock_type enrichment failed
+    # or no 4624 login event was produced (common for session reconnects).
+    rdp_session = _rdp_session_caused_lock(lock_time, data, window_secs=30)
+    if rdp_session:
+        source_ip = rdp_session.get("source_ip", "unknown")
+        rdp_user = rdp_session.get("user", "")
+        lock_user = _current_user(lock_sid, data)
+        if _users_match(rdp_user, lock_user):
+            return (
+                "RDP_SELF_RECONNECT",
+                [
+                    f"RDP session reconnected from {source_ip}",
+                    "Console session displaced by own RDP connection",
+                ],
+                "medium",
+                None,
+            )
+        else:
+            return (
+                "REMOTE_TAKEOVER",
+                [
+                    f"RDP session by {rdp_user} from {source_ip}",
+                    "Console session displaced by different user's RDP connection",
+                ],
+                "high",
+                None,
+            )
+
     # --- Default: unknown cause ---
     return (
         "UNKNOWN_LOCK",
@@ -376,6 +406,51 @@ def _find_rdp_event(lock_time, rdp_events, window_secs=30):
         if abs(evt_time - lock_time) <= window:
             return evt
     return None
+
+
+def _rdp_session_caused_lock(lock_time, data, window_secs=30):
+    """Check if TerminalServices RDP events show a console displacement near the lock.
+
+    Looks for a SESSION_RECONNECT from a non-LOCAL IP within window_secs
+    of the lock time. This is the definitive signal that an RDP connection
+    displaced the console session.
+
+    Returns the matching RDP event dict, or None.
+    """
+    rdp_events = data.get("rdp_events", [])
+    window = timedelta(seconds=window_secs)
+    best = None
+    best_delta = window + timedelta(seconds=1)
+
+    for evt in rdp_events:
+        if evt.get("event_type") != "SESSION_RECONNECT":
+            continue
+        source_ip = evt.get("source_ip", "")
+        # LOCAL reconnects are console-to-console, not RDP-caused locks
+        if not source_ip or source_ip.upper() in ("LOCAL", "", "-"):
+            continue
+        evt_time = _parse_time(evt.get("time", ""))
+        delta = abs(evt_time - lock_time)
+        if delta <= window and delta < best_delta:
+            best = evt
+            best_delta = delta
+
+    return best
+
+
+def _users_match(rdp_user_str, lock_user):
+    """Compare an RDP user string (DOMAIN\\User) against the lock user.
+
+    Handles:
+    - DOMAIN\\User vs User (strip domain prefix)
+    - Case-insensitive comparison
+    - Empty/None values (no match)
+    """
+    if not rdp_user_str or not lock_user:
+        return False
+    # TerminalServices user field is typically "DOMAIN\\User"
+    rdp_user = rdp_user_str.split("\\")[-1].upper()
+    return rdp_user == lock_user.upper()
 
 
 def _logon_type_name(logon_type):

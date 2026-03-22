@@ -81,5 +81,19 @@ wtf-windows/
 ## Versioning
 
 - **Scheme**: `MAJOR.MINOR.PATCH` with optional PHASE (PEP 440)
-- **Current**: 0.1.0-alpha (PREALPHA)
+- **Current**: 0.1.1-alpha (PREALPHA)
 - **Source of truth**: `_version.py` constants
+
+## Tools
+
+### wtf-restarted (graduated -- submodule)
+- **Location**: `tools/core/restarted/` (git submodule)
+- **Standalone**: [github.com/djdarcy/wtf-restarted](https://github.com/djdarcy/wtf-restarted)
+- **Dispatch**: pass-through via `python -m wtf_restarted`
+
+### wtf-locked (embedded)
+- **Location**: `tools/core/locked/`
+- **PS1 engine**: `ps1/investigate_locks.ps1` (7 event sources)
+- **Verdict engine**: `engine/verdict.py` (10 verdicts, security-first ranking)
+- **Render**: `render.py` (three-tier Rich output, THAC0 channel-gated)
+- **Docs**: `docs/tools/core/locked.md` (overview), `tools/core/locked/docs/` (in-depth)

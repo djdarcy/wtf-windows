@@ -55,7 +55,17 @@ def run_investigation(hours=720, strict_lookback=False, verbose=False):
 
     audit_enabled = data.get("audit_policy_enabled", False)
 
-    # Build lock sessions from events
+    # Coerce event fields to lists -- PowerShell's ConvertTo-Json
+    # unwraps single-element arrays into scalars (a dict instead of
+    # a list of one dict). This is a known serialization quirk.
+    for key in ("lock_events", "unlock_events", "screensaver_events",
+                "login_events", "rdp_events", "power_events"):
+        val = data.get(key, [])
+        if isinstance(val, dict):
+            data[key] = [val]
+        elif not isinstance(val, list):
+            data[key] = []
+
     lock_events = data.get("lock_events", [])
     unlock_events = data.get("unlock_events", [])
 

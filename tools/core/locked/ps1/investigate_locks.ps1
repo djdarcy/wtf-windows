@@ -206,6 +206,32 @@ if ($AuditEnabled) {
 $LockEvents = if ($SecurityLocks.Count -gt 0) { $SecurityLocks } else { $WinlogonLocks }
 $UnlockEvents = if ($SecurityUnlocks.Count -gt 0) { $SecurityUnlocks } else { $WinlogonUnlocks }
 
+# Enrich: when Security events are preferred, they lack lock_type metadata
+# (SESSION_LOCK vs RDP_DISCONNECT) that Winlogon events carry. Cross-reference
+# by timestamp to copy lock_type into Security events.
+if ($SecurityLocks.Count -gt 0 -and ($WinlogonLocks.Count -gt 0 -or $WinlogonDisconnects.Count -gt 0)) {
+    # WinlogonLocks already includes disconnects (merged at line 145), but
+    # build a combined list including the original disconnect array for safety.
+    $AllWinlogon = @($WinlogonLocks) + @($WinlogonDisconnects) | Sort-Object { [datetime]$_.time }
+    foreach ($secEvt in $SecurityLocks) {
+        $secTime = [datetime]$secEvt.time
+        $bestMatch = $null
+        $bestDelta = 6  # seconds -- beyond our 5s window
+        foreach ($wlEvt in $AllWinlogon) {
+            $wlTime = [datetime]$wlEvt.time
+            $delta = [Math]::Abs(($secTime - $wlTime).TotalSeconds)
+            if ($delta -le 5 -and $delta -lt $bestDelta) {
+                $bestMatch = $wlEvt
+                $bestDelta = $delta
+            }
+        }
+        if ($bestMatch) {
+            $secEvt["lock_type"] = $bestMatch.lock_type
+            $secEvt["notification_type"] = $bestMatch.notification_type
+        }
+    }
+}
+
 # =====================================================================
 # SOURCE 3: Screen saver events (4802/4803 - if audit enabled)
 # =====================================================================

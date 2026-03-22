@@ -73,6 +73,12 @@ def _has_tier1_content(sessions, data):
                 return True
     if out.is_level_active(0, 'session') and len(sessions) > 1:
         return True
+    # RDP flow for RDP-related verdicts
+    rdp_verdicts = {"RDP_SELF_RECONNECT", "REMOTE_TAKEOVER"}
+    if (out.is_level_active(0, 'rdp') and sessions
+            and sessions[0].lock_cause in rdp_verdicts
+            and data.get("rdp_events")):
+        return True
     return False
 
 
@@ -186,11 +192,12 @@ def _render_tier0(sessions, data, ai_fetcher=None):
 # ---------------------------------------------------------------------------
 
 def _render_tier1(sessions, data):
-    """Render Tier 1: evidence details + session timeline.
+    """Render Tier 1: evidence details + session timeline + RDP flow.
 
     Output gating:
       Evidence:    evidence/0
       Sessions:    session/0
+      RDP flow:    rdp/0 (shown for RDP-related verdicts)
     """
     out = get_output()
 
@@ -207,6 +214,43 @@ def _render_tier1(sessions, data):
                 if s.concurrent_login:
                     _render_login_detail(s.concurrent_login)
             out.emit(0, channel='evidence', render=_render_evidence)
+
+    # RDP session flow for RDP-related locks (show the surrounding events
+    # that tell the story: LOCAL disconnect -> remote reconnect -> etc.)
+    rdp_verdicts = {"RDP_SELF_RECONNECT", "REMOTE_TAKEOVER"}
+    if sessions and sessions[0].lock_cause in rdp_verdicts:
+        rdp_events = data.get("rdp_events", [])
+        if rdp_events:
+            def _render_rdp_flow():
+                nearby = _get_nearby_rdp_events(
+                    sessions[0].locked_at, rdp_events, window_minutes=5)
+                if nearby:
+                    console.print()
+                    console.print("[bold]RDP Session Flow[/bold] "
+                                  "[dim](surrounding events)[/dim]")
+                    table = Table(
+                        show_header=True, header_style="bold",
+                        box=None, padding=(0, 1))
+                    table.add_column("Time", width=19)
+                    table.add_column("Event", width=22)
+                    table.add_column("User")
+                    table.add_column("Source IP")
+                    for evt in nearby:
+                        evt_time_str = _fmt_time_str(evt.get("time", ""))
+                        event_type = evt.get("event_type",
+                                             f"ID {evt.get('event_id', '?')}")
+                        # Highlight the event closest to the lock
+                        style = ""
+                        if evt.get("_highlight"):
+                            style = "bold cyan"
+                        table.add_row(
+                            Text(evt_time_str, style=style),
+                            Text(event_type, style=style),
+                            Text(evt.get("user", ""), style=style),
+                            Text(evt.get("source_ip", ""), style=style),
+                        )
+                    console.print(table)
+            out.emit(0, channel='rdp', render=_render_rdp_flow)
 
     # Session timeline (if multiple sessions)
     if len(sessions) > 1:
@@ -651,6 +695,54 @@ def _render_power_events(power_events):
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
+def _get_nearby_rdp_events(lock_time, rdp_events, window_minutes=5):
+    """Get RDP session events surrounding a lock time.
+
+    Returns events within window_minutes of the lock, sorted chronologically.
+    Marks the event closest to the lock time with _highlight=True.
+    """
+    from datetime import timedelta
+    window = timedelta(minutes=window_minutes)
+    nearby = []
+    best_delta = None
+    best_idx = -1
+
+    for evt in rdp_events:
+        evt_time = _parse_rdp_time(evt.get("time", ""))
+        if evt_time and abs(evt_time - lock_time) <= window:
+            evt_copy = dict(evt)
+            delta = abs(evt_time - lock_time)
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_idx = len(nearby)
+            nearby.append(evt_copy)
+
+    # Sort chronologically (rdp_events may be newest-first)
+    nearby.sort(key=lambda e: e.get("time", ""))
+
+    # Recalculate best_idx after sort
+    if nearby and best_delta is not None:
+        for i, evt in enumerate(nearby):
+            evt_time = _parse_rdp_time(evt.get("time", ""))
+            if evt_time and abs(evt_time - lock_time) == best_delta:
+                evt["_highlight"] = True
+                break
+
+    return nearby
+
+
+def _parse_rdp_time(time_str):
+    """Parse ISO time string to datetime for RDP event comparison."""
+    from datetime import datetime
+    if not time_str:
+        return None
+    try:
+        clean = time_str.split(".")[0].split("+")[0].rstrip("Z")
+        return datetime.fromisoformat(clean)
+    except (ValueError, AttributeError):
+        return None
+
 
 def _fmt_time(dt):
     """Format a datetime for display."""

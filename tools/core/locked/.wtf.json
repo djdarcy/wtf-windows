@@ -1,6 +1,6 @@
 {
     "name": "locked",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Why did my Windows PC lock? Diagnoses lock causes, identifies who logged in.",
     "namespace": "core",
     "language": "python",

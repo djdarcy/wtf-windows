@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1-alpha] - 2026-03-19
+
+### Added
+- **wtf-locked**: first embedded diagnostic tool
+  - Diagnoses lock causes: RDP takeover, unauthorized login, screensaver,
+    inactivity, GPO, sleep/wake, manual lock
+  - Security-first verdict ranking (suspicious events surfaced first)
+  - Concurrent login detection: who logged in, from where, what IP
+  - Winlogon type 4 (REMOTE_DISCONNECT) as lock-equivalent event --
+    works without audit policy enabled
+  - Three-tier Rich output with panels, tables, and color-coded verdicts
+  - THAC0 channel-gated rendering with render=lambda: closures
+  - Lock-anchored lookback (auto-extends to find most recent lock)
+  - --tier, --no-page, --ai, --ai-only, --ai-verbose, --ai-refresh flags
+  - Rich spinner during PS1 execution
+  - AI prompt template with security-focused analysis
+  - Event deduplication for Winlogon subscriber notifications
+- Shared library (`src/wtf_windows/lib/`):
+  - THAC0 libs (log_lib, core_lib, help_lib) -- 13 files, temporary
+    residents pending DazzleLib extraction
+  - ps1/runner.py: generalized PowerShell runner with caller-supplied ps1_dir
+  - ai/analyzer.py: generalized AI pipeline with caller-supplied fingerprint_fn,
+    prompt_path, cache_dir, tool_name
+  - ai/backends/: claude, codex, prompt-only (claude uses stdin for prompts
+    >8KB to avoid Windows command-line length limit)
+- Tool documentation: docs/tools/core/ with overview docs for restarted
+  and locked; tool-local docs at tools/core/locked/docs/event-reference.md
+
+### Fixed
+- **RDP lock misclassification**: locks caused by RDP session reconnects
+  (same user from another machine) were reported as UNKNOWN_LOCK instead
+  of RDP_SELF_RECONNECT when Security audit was enabled. Root cause:
+  Security 4800 events lack Winlogon's lock_type metadata; fix enriches
+  Security events from Winlogon and adds TerminalServices-based fallback
+  classification (Rule 8) that detects RDP console displacement directly
+- Tier 1 now shows "RDP Session Flow" with surrounding TerminalServices
+  events for RDP-related verdicts, so users can see the full
+  disconnect/reconnect sequence
+- Claude CLI backend: prompts >8KB piped via stdin (-p "-") to avoid
+  WinError 206 on Windows
+- Winlogon event deduplication: multiple subscribers per lock no longer
+  produce duplicate lock sessions
+
+### Changed
+- loader.py: embedded tools with __init__.py run as packages via subprocess
+  with PYTHONPATH (supports relative imports)
+- loader.py: pass_through checked in both top-level and runtime dict
+
 ## [0.1.0-alpha] - 2026-03-17
 
 ### Added
@@ -36,5 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub: djdarcy/wtf-restarted#27, DazzleTools/dazzlecmd#13
 - Design: `2026-03-16__16-24-35__dev-workflow_wtf-windows-umbrella-architecture.md`
 
-[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.1-alpha...HEAD
+[0.1.1-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/djdarcy/wtf-windows/releases/tag/v0.1.0-alpha
