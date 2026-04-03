@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2-alpha] - 2026-04-02
+
+### Added
+- Kit manifest self-describing fields: `tools_dir` and `manifest` in
+  `kits/core.kit.json` for DazzleCMD kit-as-repo discovery
+- DazzleCMD Integration section in CLAUDE.md with migration context
+
+### Fixed
+- `importer.py`: replaced `cmd.exe /c mklink` with PowerShell
+  `New-Item -ItemType Junction` -- cmd.exe fails silently from bash/WSL
+
+### Changed
+- Updated restarted submodule: `.wtf.json` now committed in wtf-restarted
+  repo (was untracked, blocking kit discovery)
+
+### Cross-references
+- DazzleTools/dazzlecmd#7, #13
+- Design: `2026-04-02__19-54-21__dev-workflow_dazzlecmd-integration-gaps-and-design-problems.md`
+
 ## [0.1.1-alpha] - 2026-03-19
 
 ### Added
@@ -84,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub: djdarcy/wtf-restarted#27, DazzleTools/dazzlecmd#13
 - Design: `2026-03-16__16-24-35__dev-workflow_wtf-windows-umbrella-architecture.md`
 
-[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.1-alpha...HEAD
+[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.2-alpha...HEAD
+[0.1.2-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.1-alpha...v0.1.2-alpha
 [0.1.1-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/djdarcy/wtf-windows/releases/tag/v0.1.0-alpha

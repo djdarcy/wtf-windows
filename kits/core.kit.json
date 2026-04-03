@@ -4,6 +4,8 @@
     "description": "Core Windows diagnostic tools - restart, lock, and crash analysis",
     "author": "djdarcy",
     "always_active": true,
+    "tools_dir": "tools",
+    "manifest": ".wtf.json",
     "tools": [
         "core:restarted",
         "core:locked"

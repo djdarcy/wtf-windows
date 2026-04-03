@@ -98,31 +98,29 @@ def create_link(source_path, target_path):
 
 
 def _create_link_windows(source_path, target_path):
-    """Create directory link on Windows: mklink /D -> mklink /J fallback."""
-    try:
-        result = subprocess.run(
-            ["cmd", "/c", "mklink", "/D", target_path, source_path],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            return "symlink"
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    """Create directory junction on Windows using PowerShell.
 
+    Uses New-Item -ItemType Junction (no admin required) instead of
+    cmd.exe mklink which fails silently when invoked from bash/WSL.
+    """
+    result = None
     try:
         result = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", target_path, source_path],
-            capture_output=True, text=True, timeout=10
+            [
+                "powershell", "-Command",
+                f'New-Item -ItemType Junction -Path "{target_path}" -Target "{source_path}" -Force',
+            ],
+            capture_output=True, text=True, timeout=10,
         )
         if result.returncode == 0:
             return "junction"
     except (OSError, subprocess.TimeoutExpired):
         pass
 
-    print(f"Error: Could not create link: {target_path} -> {source_path}",
+    print(f"Error: Could not create junction: {target_path} -> {source_path}",
           file=sys.stderr)
-    print("  mklink /D failed (may need admin). mklink /J also failed.",
-          file=sys.stderr)
+    if result and result.stderr:
+        print(f"  {result.stderr.strip()}", file=sys.stderr)
     return None
 
 

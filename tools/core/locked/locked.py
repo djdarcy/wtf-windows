@@ -126,7 +126,7 @@ def build_parser():
     )
     parser.add_argument(
         "--version", action="version",
-        version="wtf-locked 0.1.1-alpha",
+        version="wtf-locked 0.1.2-alpha",
     )
     return parser
 

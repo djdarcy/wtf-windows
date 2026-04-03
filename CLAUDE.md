@@ -71,6 +71,16 @@ wtf-windows/
 - **#2**: Notes & Quick Ideas (evergreen)
 - **#3**: EPIC: Architecture and DazzleCMD-pattern implementation
 
+## DazzleCMD Integration
+
+wtf-windows is the first external kit for [DazzleCMD](https://github.com/DazzleTools/dazzlecmd) import.
+
+- **Kit manifest** (`kits/core.kit.json`): self-describing with `tools_dir` and `manifest` fields
+- **Current approach**: Standalone CLI; Approach B pass-through planned for DazzleCMD import
+- **Future migration**: When DazzleCMD v0.6.0 ships `AggregatorEngine`, replace copied `loader.py`/`cli.py` with thin engine wrapper (~10 lines). All `lib/` domain code stays.
+- **Schema divergences**: `runtime.pass_through` and `runtime.module` are wtf-windows extensions not yet in DazzleCMD. Resolved when AggregatorEngine ships.
+- **Handoff docs**: `private/claude/2026-04-02__17-48-15__wtf-windows-integration-requirements.md`, `private/claude/2026-04-02__20-52-11__wtf-windows-migration-to-shared-engine.md`
+
 ## Cross-References
 
 - [wtf-restarted](https://github.com/djdarcy/wtf-restarted) -- First graduated tool (submodule)
@@ -81,7 +91,7 @@ wtf-windows/
 ## Versioning
 
 - **Scheme**: `MAJOR.MINOR.PATCH` with optional PHASE (PEP 440)
-- **Current**: 0.1.1-alpha (PREALPHA)
+- **Current**: 0.1.2-alpha (PREALPHA)
 - **Source of truth**: `_version.py` constants
 
 ## Tools
