@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3-alpha] - 2026-04-02
+
+### Added
+- git-repokit-common subtree at `scripts/` with shared tooling:
+  gh_issue_full.py, sync-versions.py, git hooks, session tools
+- `[tool.repokit-common]` config in pyproject.toml for version management
+- Git hooks: pre-commit (version sync, private file protection),
+  post-commit (hash refresh), pre-push (syntax check, tests)
+- sync-versions.py: `tag-format` config option -- projects can choose
+  `"human"` (v0.1.3-alpha) or `"pep440"` (v0.1.3a1, default). Fixes
+  --check false positives and CHANGELOG link corruption for pre-release
+  projects using human-readable git tags.
+
+### Fixed
+- pre-push hook: package detection missed src/ layout projects; syntax
+  check failed on empty globs; test runner blocked push when no tests
+  existed yet
+
+### Changed
+- `__version__` now includes git metadata (branch, build, date, hash)
+  via sync-versions.py, auto-updated by pre-commit hook
+
 ## [0.1.2-alpha] - 2026-04-02
 
 ### Added
@@ -103,7 +125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub: djdarcy/wtf-restarted#27, DazzleTools/dazzlecmd#13
 - Design: `2026-03-16__16-24-35__dev-workflow_wtf-windows-umbrella-architecture.md`
 
-[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.2-alpha...HEAD
+[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.3-alpha...HEAD
+[0.1.3-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.2-alpha...v0.1.3-alpha
 [0.1.2-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.1-alpha...v0.1.2-alpha
 [0.1.1-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/djdarcy/wtf-windows/releases/tag/v0.1.0-alpha

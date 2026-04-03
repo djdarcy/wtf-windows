@@ -124,9 +124,10 @@ def build_parser():
         "--ai-refresh", action="store_true",
         help="Bypass AI cache and re-run analysis",
     )
+    from wtf_windows._version import get_base_version
     parser.add_argument(
         "--version", action="version",
-        version="wtf-locked 0.1.2-alpha",
+        version=f"wtf-locked {get_base_version()}",
     )
     return parser
 

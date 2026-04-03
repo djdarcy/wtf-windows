@@ -59,6 +59,14 @@ include = ["wtf_windows*"]
 [tool.setuptools.package-data]
 "wtf_windows" = ["templates/*"]
 
+[tool.repokit-common]
+version-source = "src/wtf_windows/_version.py"
+changelog = "CHANGELOG.md"
+repo-url = "https://github.com/djdarcy/wtf-windows"
+tag-prefix = "v"
+tag-format = "human"
+private-patterns = ["private/", ".env"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"

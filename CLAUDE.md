@@ -91,7 +91,7 @@ wtf-windows is the first external kit for [DazzleCMD](https://github.com/DazzleT
 ## Versioning
 
 - **Scheme**: `MAJOR.MINOR.PATCH` with optional PHASE (PEP 440)
-- **Current**: 0.1.2-alpha (PREALPHA)
+- **Current**: 0.1.3-alpha (PREALPHA)
 - **Source of truth**: `_version.py` constants
 
 ## Tools
