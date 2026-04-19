@@ -34,6 +34,29 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
+        # dazzlecmd-lib is not on PyPI yet (held per dazzlecmd's
+        # no-release-during-Phase-4 policy). Install it from the
+        # dazzlecmd monorepo's packages/dazzlecmd-lib/ subdirectory
+        # via a tarball URL BEFORE pip-installing wtf.
+        #
+        # Tarball (not git+) URL is intentional: `pip install git+...`
+        # triggers `git submodule update --init --recursive`, which on
+        # the dazzlecmd monorepo tries to clone projects/wtf (pointing
+        # back to THIS repo -- circular) and projects/core/listall.
+        # The circular clone attempt auth-prompts and fails in CI
+        # (fatal: could not read Username for 'https://github.com').
+        # Tarball installs don't pull submodules, so the library alone
+        # lands cleanly.
+        #
+        # Pinned to dazzlecmd commit 7546925 (v0.7.24) which ships the
+        # package-mode runner fix wtf's python tools (locked,
+        # restarted) require for relative-import dispatch.
+        #
+        # Once installed, wtf's dazzlecmd-lib>=0.1.0 constraint in
+        # pyproject.toml is satisfied by the already-installed package,
+        # so pip does not re-fetch from PyPI. Revert to standard
+        # PyPI-only install once dazzlecmd-lib is published.
+        pip install "dazzlecmd-lib @ https://github.com/DazzleTools/dazzlecmd/archive/7546925.tar.gz#subdirectory=packages/dazzlecmd-lib"
         pip install -e ".[dev]"
 
     - name: Install submodule tools
