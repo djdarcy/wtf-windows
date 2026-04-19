@@ -32,7 +32,9 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
-dependencies = []
+dependencies = [
+    "dazzlecmd-lib>=0.1.0",
+]
 
 [project.optional-dependencies]
 dev = [

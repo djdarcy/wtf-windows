@@ -26,7 +26,7 @@ PHASE = "alpha"  # Per-MINOR feature set: None, "alpha", "beta", "rc1", etc.
 PROJECT_PHASE = "prealpha"  # Project-wide: "prealpha", "alpha", "beta", "stable"
 
 # Auto-updated by git hooks - do not edit manually
-__version__ = "0.1.3-alpha_main_11-20260403-a2edc96b"
+__version__ = "0.1.3-alpha_main_11-20260418-93e29b09"
 __app_name__ = "wtf-windows"
 
 

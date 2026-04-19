@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4-alpha] - 2026-04-18
+
+### Added
+
+- **Adopted `dazzlecmd-lib` as the engine.** wtf-windows is the first
+  third-party production adopter of the `dazzlecmd-lib` library
+  (alongside dazzlecmd itself, which dogfoods it). The library powers
+  kit discovery, tool registration, FQCN resolution, runtime dispatch,
+  config management, and user-override integration. Adopting the
+  library removes ~400 LOC of duplicated engine code from wtf-windows
+  and ensures bug fixes and feature improvements land in wtf
+  automatically with each `dazzlecmd-lib` upgrade.
+- `pyproject.toml` declares `dazzlecmd-lib>=0.1.0` as a runtime
+  dependency.
+
+### Changed
+
+- **`src/wtf_windows/cli.py` rewritten** around `AggregatorEngine` +
+  `MetaCommandRegistry`. The CLI shape is unchanged from the user's
+  perspective:
+  - Tools still dispatch via `wtf <tool>` (e.g. `wtf locked`,
+    `wtf restarted history`)
+  - `wtf list` still shows domain-enriched output with
+    `[AI, history, admin]` diagnostic badges (implemented as a registry
+    handler override)
+  - `wtf info <tool>` still appends wtf-specific diagnostics (event
+    logs, privileges, AI / history support, link status)
+  - `wtf kit list`, `wtf kit status`, `wtf version` use the library
+    defaults
+  - `wtf mode status` / `wtf mode switch` registered as wtf-specific
+    meta-commands via `engine.meta_registry.register(...)`
+  - `wtf new <name>` / `wtf add` registered the same way
+  - Categorized help epilog (diagnostic tools / management /
+    development / examples sections) preserved via
+    `engine.epilog_builder`
+
+  Internally, the meta-command registry flow replaces the previous
+  hand-written parser / dispatch code.
+
+### Removed
+
+- **`src/wtf_windows/loader.py`** (392 LOC). Replaced by
+  `dazzlecmd_lib.loader` (discovery) and `dazzlecmd_lib.registry`
+  (runtime dispatch). All kit / project discovery and Python / shell /
+  script / binary / node / docker runner factories now come from the
+  library.
+- `_cmd_list`, `_cmd_kit_list`, `_cmd_kit_status`, `_cmd_version`
+  handlers: inherited from `dazzlecmd_lib.default_meta_commands`;
+  domain-specific overrides (list, info) remain in `cli.py`.
+
+### Fixed
+
+- wtf's mode-cache fallback still works during discovery. wtf's
+  `cli.py` now explicitly hooks `wtf_windows.mode.get_cached_manifest`
+  into the library's `set_manifest_cache_fn(fn)` hook at `main()`
+  startup.
+- Python package-mode tool dispatch (tools with `__init__.py` +
+  relative imports, e.g. `locked`, `restarted`) works via the library's
+  fixed `make_python_runner` -- places parent of tool_dir on sys.path
+  and imports as `<package_name>.<script_stem>`. (Library fix ships in
+  `dazzlecmd-lib` v0.7.24; wtf depends on it.)
+
+### Notes
+
+- This is an internal-architecture change. The user-facing CLI is
+  identical to v0.1.3-alpha. No documented command changes; no
+  migration needed.
+- wtf-windows remains dispatchable as an embedded kit inside dazzlecmd
+  via the `projects/wtf/` submodule. The 3-tier nesting case
+  (`dz wtf:core:locked`) still works; validated end-to-end by the
+  tester-agent sweep accompanying dazzlecmd v0.7.24.
+- Future work: replace the temporary `_override_tools_dir` /
+  `_override_manifest` fields in dazzlecmd's `kits/wtf.kit.json` with
+  direct declarations in wtf's own `kits/core.kit.json` (tracked in
+  dazzlecmd repo).
+
 ## [0.1.3-alpha] - 2026-04-02
 
 ### Added
