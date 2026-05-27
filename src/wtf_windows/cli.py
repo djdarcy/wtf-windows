@@ -100,7 +100,7 @@ def _wtf_list_handler(args, engine, projects, kits, project_root):
 def _wtf_info_handler(args, engine, projects, kits, project_root):
     """Show info on a tool including wtf-specific diagnostics fields."""
     # Start with the library's stock renderer
-    result = _dmc.render_info(args, projects)
+    result = _dmc.render_info(args, projects, engine)
     if result != 0:
         return result
 
@@ -175,6 +175,11 @@ def _mode_parser_factory(subparsers):
         help="Remote URL for submodule (reads from manifest if not given)",
     )
     mode_switch.add_argument(
+        "--force", action="store_true",
+        help="Bypass the dirty-tree safety check (DATA LOSS: any "
+             "uncommitted work in the tool directory is destroyed).",
+    )
+    mode_switch.add_argument(
         "--dry-run", action="store_true",
         help="Show what would happen without doing it",
     )
@@ -185,17 +190,18 @@ def _mode_parser_factory(subparsers):
 
 
 def _mode_status_handler(args, engine, projects, kits, project_root):
-    from wtf_windows.mode import cmd_status
+    from dazzlecmd_lib.mode import cmd_status
     tool_filter = getattr(args, "tool", None)
     kit_filter = getattr(args, "kit", None)
     return cmd_status(
         projects, project_root,
         tool_filter=tool_filter, kit_filter=kit_filter,
+        tools_dir=engine.tools_dir, command=engine.command,
     )
 
 
 def _mode_switch_handler(args, engine, projects, kits, project_root):
-    from wtf_windows.mode import cmd_switch
+    from dazzlecmd_lib.mode import cmd_switch
     force_mode = None
     if getattr(args, "dev", False):
         force_mode = "dev"
@@ -209,6 +215,8 @@ def _mode_switch_handler(args, engine, projects, kits, project_root):
         force_mode=force_mode,
         dry_run=getattr(args, "dry_run", False),
         url=getattr(args, "url", None),
+        force=getattr(args, "force", False),
+        tools_dir=engine.tools_dir, command=engine.command, schema=None,
     )
 
 
@@ -535,53 +543,46 @@ def _build_categorized_help(projects):
 # ---------------------------------------------------------------------------
 
 
-def _find_wtf_project_root():
-    """Walk up from this file's location to find wtf-windows' repo root.
-
-    The library's default find_project_root walks up from the library's
-    own __file__ (which is in site-packages for installed packages).
-    wtf's tools/kits live next to its own cli.py, so we need to start
-    the walk from here.
-    """
-    current = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(5):
-        parent = os.path.dirname(current)
-        if parent == current:
-            break
-        current = parent
-        if (os.path.isdir(os.path.join(current, "tools"))
-                and os.path.isdir(os.path.join(current, "kits"))):
-            return current
-    return None
-
-
 def main():
-    """Main entry point for wtf-windows CLI."""
+    """Main entry point for wtf-windows CLI.
+
+    As of v0.1.4-alpha (Phase 3.5 T1-M2), wtf-windows consumes
+    dazzlecmd-lib's declarative-config path: identity, layout, and
+    meta-command policy live in ``aggregator.json`` and are read via
+    ``AggregatorEngine.from_project()``. The imperative customizations
+    below (domain-enriched list/info handlers, the mode/new/add
+    meta-commands, the categorized help epilog) stay in code because
+    they ARE code -- handler functions can't be expressed in JSON.
+    ``aggregator.json``'s ``enabled_meta_commands`` already excludes
+    ``tree``/``setup``, so the old post-construction unregister calls
+    are gone; mode forks were retired in favor of ``dazzlecmd_lib.mode``.
+    """
+    from dazzlecmd_lib.aggregator_config import find_aggregator_root
+    from dazzlecmd_lib.mode import get_cached_manifest
+
     # Hook wtf's cached-manifest fallback into the library's loader so that
     # mode-switched tools (manifest absent from disk, cached in mode state)
     # are still discovered.
-    from wtf_windows.mode import get_cached_manifest
     set_manifest_cache_fn(get_cached_manifest)
 
-    engine = AggregatorEngine(
-        name="wtf-windows",
-        command="wtf",
-        tools_dir="tools",
-        kits_dir="kits",
-        manifest=".wtf.json",
-        description=(
-            "wtf-windows -- Why is my Windows PC doing that? "
-            "Many diagnostics, one command."
-        ),
+    # Anchor discovery to THIS package's location, not cwd. Anchoring to
+    # cwd would make `wtf` impersonate whatever aggregator the user is
+    # standing in (e.g., running `wtf` from inside the dazzlecmd tree).
+    # The entry point's identity is fixed by which package it is.
+    project_root = find_aggregator_root(os.path.dirname(os.path.abspath(__file__)))
+    if project_root is None:
+        print(
+            "Error: could not find aggregator.json. The wtf-windows package "
+            "must be installed alongside its project tree.",
+            file=sys.stderr,
+        )
+        return 1
+
+    engine = AggregatorEngine.from_project(
+        project_root,
         version_info=(DISPLAY_VERSION, __version__),
         is_root=True,
-        extra_reserved_commands={"mode", "new", "add", "enhance", "graduate"},
-        project_root=_find_wtf_project_root(),
     )
-
-    # Drop library defaults wtf doesn't want
-    engine.meta_registry.unregister("tree")
-    engine.meta_registry.unregister("setup")
 
     # Override library defaults for domain-enriched output
     engine.meta_registry.override("list", handler=_wtf_list_handler)

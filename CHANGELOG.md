@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5-alpha] - 2026-05-26
+
+Phase 3.5 T1-M2: adopt dazzlecmd-lib's declarative-config path and retire wtf's forked mode logic. Where 0.1.4-alpha moved engine construction onto `dazzlecmd-lib`, this commit completes the migration -- wtf no longer carries any forked library code, and its identity/layout/policy are declared in `aggregator.json` instead of hardcoded constructor kwargs.
+
+### Added
+
+- `aggregator.json` at the repo root. Declares wtf's identity (`name: "wtf-windows"`, `command: "wtf"`), layout (`tools_dir: "tools"`, `kits_dir: "kits"`, `manifest_name: ".wtf.json"`), meta-command policy (`enabled_meta_commands: [list, info, kit, version]`; `extra_reserved_commands: [mode, new, add, enhance, graduate]`), schema (`remote_url_paths: [source.url]` -- matches wtf's actual tool manifests, which use `source.url` + `lifecycle.graduated_to`), and discovery patterns. Read by `AggregatorEngine.from_project()`.
+- `--force` flag on `wtf mode switch` -- bypasses the new dirty-tree safety gate (DATA LOSS escape hatch). wtf inherits the T1-E safety primitive from `dazzlecmd-lib` v0.6.13: `wtf mode switch` now refuses to destroy a tool directory with uncommitted changes unless `--force` is passed. wtf previously had NO dirty-tree protection.
+- `tests/test_smoke.py` -- wtf's first automated tests (7 subprocess smoke tests). wtf had zero test coverage before this. Guards: version identifies as wtf-windows (not the impersonation bug), list/info/mode-status run, aggregator.json loads, `mode switch --help` exposes `--force`. Two of these would have caught bugs found during this migration.
+
+### Changed
+
+- **`src/wtf_windows/cli.py:main()` rewritten** onto `find_aggregator_root() + AggregatorEngine.from_project()`. The hardcoded `AggregatorEngine(name=..., command=..., tools_dir=..., ...)` constructor kwargs are gone -- those values live in `aggregator.json`. The imperative customizations stay in code (they ARE code): the domain-enriched `_wtf_list_handler` / `_wtf_info_handler` overrides, the `mode`/`new`/`add` meta-command registrations, and the categorized help epilog. `find_aggregator_root()` is anchored to the package's own `__file__` location (NOT cwd) so `wtf` always resolves to the wtf-windows project regardless of the directory it's invoked from.
+- The mode handlers (`_mode_status_handler`, `_mode_switch_handler`) now import from `dazzlecmd_lib.mode` and thread `tools_dir=engine.tools_dir`, `command=engine.command` (and `force` / `schema=None` for switch).
+- `pyproject.toml` -- `dazzlecmd-lib` dependency bumped from `>=0.1.0` to `>=0.6.13,<1.0` (the parameterized `mode` module + `from_project()` + `find_aggregator_root()` land in 0.6.13).
+
+### Fixed
+
+- `wtf info <tool>` crashed with `TypeError: render_info() missing 1 required positional argument: 'engine'`. `_wtf_info_handler` delegated to `dazzlecmd_lib.default_meta_commands.render_info(args, projects)` with a stale 2-arg signature; the library's signature gained `engine`. Pre-existing bug (undetected because wtf had no tests), surfaced and fixed during T1-M2 end-to-end verification. Now passes `engine`.
+
+### Removed
+
+- **`src/wtf_windows/mode.py` deleted** (619 LOC). wtf's forked copy of the mode subsystem -- a pre-parameterization snapshot of dazzlecmd's mode logic that hardcoded `"tools/"` and `"wtf"`. All of it now lives in `dazzlecmd_lib.mode` (parameterized in lib v0.6.10-0.6.12), consumed via the thin handlers in `cli.py`. The library version is a strict superset (adds the dirty-tree safety gate + schema decoupling wtf's fork lacked).
+- `_find_wtf_project_root()` helper removed -- replaced by `dazzlecmd_lib.aggregator_config.find_aggregator_root()`.
+
 ## [0.1.4-alpha] - 2026-04-18
 
 ### Added
@@ -201,7 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub: djdarcy/wtf-restarted#27, DazzleTools/dazzlecmd#13
 - Design: `2026-03-16__16-24-35__dev-workflow_wtf-windows-umbrella-architecture.md`
 
-[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.3-alpha...HEAD
+[Unreleased]: https://github.com/djdarcy/wtf-windows/compare/v0.1.5-alpha...HEAD
 [0.1.3-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.2-alpha...v0.1.3-alpha
 [0.1.2-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.1-alpha...v0.1.2-alpha
 [0.1.1-alpha]: https://github.com/djdarcy/wtf-windows/compare/v0.1.0-alpha...v0.1.1-alpha

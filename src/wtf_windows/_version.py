@@ -21,12 +21,12 @@ Version levels:
 # Version components - edit these for version bumps
 MAJOR = 0
 MINOR = 1
-PATCH = 3
+PATCH = 5
 PHASE = "alpha"  # Per-MINOR feature set: None, "alpha", "beta", "rc1", etc.
 PROJECT_PHASE = "prealpha"  # Project-wide: "prealpha", "alpha", "beta", "stable"
 
 # Auto-updated by git hooks - do not edit manually
-__version__ = "0.1.3-alpha_main_13-20260419-e7017822"
+__version__ = "0.1.5-alpha_main_13-20260526-a0c31244"
 __app_name__ = "wtf-windows"
 
 

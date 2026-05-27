@@ -33,7 +33,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "dazzlecmd-lib>=0.1.0",
+    "dazzlecmd-lib>=0.6.13,<1.0",
 ]
 
 [project.optional-dependencies]
